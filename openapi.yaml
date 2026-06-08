@@ -1,0 +1,1005 @@
+openapi: 3.0.3
+info:
+  title: EPP Poll API
+  version: 1.0.0
+  description: |
+    ## Introduction
+
+    Welcome to the .ee registry EPP Poll message documentation.
+    This documentation describes poll notifications issued by the registry,
+    intended for registrars building automation on top of EPP poll.
+
+    ## How poll works
+
+    1. Send `poll req` to retrieve the next message from the queue
+    2. Process the message based on its type
+    3. Send `poll ack` with the message ID to acknowledge it
+
+    ## Message types
+
+    See the sidebar for all documented poll message types with XML examples.
+  x-logo:
+    url: eif-logo.png
+    backgroundColor: '#FFFFFF'
+    altText: EIS logo
+
+x-tagGroups:
+  - name: Poll
+    tags:
+      - Requests
+      - Poll messages
+      - CSYNC poll messages
+      - Change poll messages
+
+tags:
+  - name: Requests
+    description: Poll request and acknowledge commands.
+  - name: Poll messages
+    description: |
+      Poll messages as defined in [RFC 5730 section 2.9.2.3](https://www.rfc-editor.org/rfc/rfc5730.html#section-2.9.2.3).
+  - name: CSYNC poll messages
+    description: CSYNC poll messages (not currently in use).
+  - name: Change poll messages
+    description: |
+      Change poll messages as defined in [RFC 8590](https://www.rfc-editor.org/rfc/rfc8590.html).
+
+paths:
+  /epp/poll/req:
+    post:
+      tags:
+        - Requests
+      summary: Request last message in the queue
+      operationId: pollReq
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/EppPollRequest'
+            example: |
+              <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+              <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd">
+                <command>
+                  <poll op="req"/>
+                  <clTRID>QueryNO-1</clTRID>
+                </command>
+              </epp>
+      responses:
+        '200':
+          description: Poll response
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollEmptyResponse'
+              examples:
+                queueEmpty:
+                  summary: Response - queue is empty
+                  value: |
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                      <response>
+                        <result code="1300">
+                          <msg>Command completed successfully; no messages</msg>
+                        </result>
+                        <trID>
+                          <clTRID>2af275f1a0234f</clTRID>
+                          <svTRID>ccReg-8619709603</svTRID>
+                        </trID>
+                      </response>
+                    </epp>
+
+  /epp/poll/ack:
+    post:
+      tags:
+        - Requests
+      summary: Acknowledge - set poll message as read
+      operationId: pollAck
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/EppPollRequest'
+            example: |
+              <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+              <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd">
+                <command>
+                  <poll op="ack" msgID="175232"/>
+                  <clTRID>timo2-1737037930</clTRID>
+                </command>
+              </epp>
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollAckResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1000">
+                      <msg>Command completed successfully</msg>
+                    </result>
+                    <msgQ count="65325" id="175232"/>
+                    <trID>
+                      <clTRID>timo2-1737037930</clTRID>
+                      <svTRID>ccReg-2755405695</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/domain-transferred-away:
+    get:
+      tags:
+        - Poll messages
+      summary: Domain trasfered away from the registrar
+      operationId: pollMessageDomainTransferredAway
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="132" id="506585">
+                      <qDate>2025-01-03T07:50:09Z</qDate>
+                      <msg>Transfer of domain wns.ee has been approved. It was associated with registrant WEBNIC:WN55673440T and contacts WEBNIC:WN52773574T, WEBNIC:WN52773578T.</msg>
+                    </msgQ>
+                    <resData>
+                      <domain:trnData xmlns:domain="https://epp.tld.ee/schema/domain-ee-1.1.xsd">
+                        <domain:name>wns.ee</domain:name>
+                        <domain:trStatus>serverApproved</domain:trStatus>
+                        <domain:reID>ALMIC</domain:reID>
+                        <domain:reDate>2025-01-03T09:50:09+02:00</domain:reDate>
+                        <domain:acID>WEBNIC</domain:acID>
+                        <domain:acDate>2025-01-03T09:50:09+02:00</domain:acDate>
+                        <domain:exDate>2025-09-26T00:00:00+03:00</domain:exDate>
+                      </domain:trnData>
+                    </resData>
+                    <trID>
+                      <clTRID>ABC:wbcc1737036969037:1737036969037</clTRID>
+                      <svTRID>ccReg-9951844321</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/force-delete-set:
+    get:
+      tags:
+        - Poll messages
+      summary: ForceDelete set on a domain
+      operationId: pollMessageForceDeleteSet
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="65326" id="175232">
+                      <qDate>2025-01-14T10:33:33Z</qDate>
+                      <msg>Force delete set on domain hizytkej.ee. Outzone date: 2025-01-30 00:00:00 +0200. Purge date: 2025-03-01 00:00:00 +0200</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>timo2-1737037733</clTRID>
+                      <svTRID>ccReg-3645777158</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/force-delete-set-invalid-email:
+    get:
+      tags:
+        - Poll messages
+      summary: ForceDelete set on a domain with status notes (reason - invalid email)
+      operationId: pollMessageForceDeleteSetInvalidEmail
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="537024">
+                      <qDate>2025-01-16T03:06:15Z</qDate>
+                      <msg>Force delete set on domain kowalski-engineering.ee. Outzone date: 2025-04-26 00:00:00 +0300. Purge date: 2025-05-26 00:00:00 +0300. Invalid email: tomasz.kowalski@kowalski-consulting.pl</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>0.96641800 1736997003</clTRID>
+                      <svTRID>ccReg-4421876015</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/force-delete-set-invalid-ident:
+    get:
+      tags:
+        - Poll messages
+      summary: ForceDelete set on a domain with status notes (reason - invalid ident)
+      operationId: pollMessageForceDeleteSetInvalidIdent
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="665" id="349421">
+                      <qDate>2024-12-19T11:05:59Z</qDate>
+                      <msg>Force delete set on domain fd-on-vajalik.ee. Outzone date: 2025-01-04 00:00:00 +0200. Purge date: 2025-02-03 00:00:00 +0200. Invalid ident 00000000</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>Märi Änn R1-1734691898</clTRID>
+                      <svTRID>ccReg-9056177102</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/soft-force-delete-set:
+    get:
+      tags:
+        - Poll messages
+      summary: Soft ForceDelete set on a domain
+      operationId: pollMessageSoftForceDeleteSet
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="65326" id="175232">
+                      <qDate>2025-01-14T10:33:33Z</qDate>
+                      <msg>For domain .* started [0-9]+\-days redemption grace period\, ForceDelete will be in effect from .*\+[0-9]+</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>timo2-1737037733</clTRID>
+                      <svTRID>ccReg-3645777158</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/force-delete-canceled:
+    get:
+      tags:
+        - Poll messages
+      summary: ForceDelete canceled
+      operationId: pollMessageForceDeleteCanceled
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="537049">
+                      <qDate>2025-01-16T13:00:22Z</qDate>
+                      <msg>Force delete is cancelled on domain barberhouse.ee</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>0.42681300 1737032425</clTRID>
+                      <svTRID>ccReg-2576844597</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/domain-deleted:
+    get:
+      tags:
+        - Poll messages
+      summary: Domain deleted
+      operationId: pollMessageDomainDeleted
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="537005">
+                      <qDate>2025-01-15T22:02:20Z</qDate>
+                      <msg>Domain deleted!: madebyme.ee</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>EIS#poll_20250116080029_1737014429555</clTRID>
+                      <svTRID>ccReg-0373743673</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/registrant-approved-domain-owner-change:
+    get:
+      tags:
+        - Poll messages
+      summary: Registrant approved domain owner change
+      operationId: pollMessageRegistrantApprovedDomainOwnerChange
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>Registrant confirmed domain update: .*</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/registrant-rejected-domain-owner-change:
+    get:
+      tags:
+        - Poll messages
+      summary: Registrant rejected domain owner change
+      operationId: pollMessageRegistrantRejectedDomainOwnerChange
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>Registrant rejected domain update: .*</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/domain-owner-change-request-expired:
+    get:
+      tags:
+        - Poll messages
+      summary: Domain owner change request expired
+      operationId: pollMessageDomainOwnerChangeRequestExpired
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>Registrant did not confirm domain update: .*</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/registrant-approved-domain-deletion:
+    get:
+      tags:
+        - Poll messages
+      summary: Registrant approved domain deletion
+      operationId: pollMessageRegistrantApprovedDomainDeletion
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>Registrant confirmed domain deletion: .*</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/registrant-rejected-domain-deletion:
+    get:
+      tags:
+        - Poll messages
+      summary: Registrant rejected domain deletion
+      operationId: pollMessageRegistrantRejectedDomainDeletion
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>Registrant rejected domain deletion: .*</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/domain-deletion-request-expired:
+    get:
+      tags:
+        - Poll messages
+      summary: Domain deletion request expired
+      operationId: pollMessageDomainDeletionRequestExpired
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>Registrant did not confirm domain deletion: .*</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/registry-lock-applied:
+    get:
+      tags:
+        - Poll messages
+      summary: Registry lock applied on the domain
+      operationId: pollMessageRegistryLockApplied
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>Domain .* has been locked by registrant</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/registry-lock-removed:
+    get:
+      tags:
+        - Poll messages
+      summary: Registry lock removed from a domain
+      operationId: pollMessageRegistryLockRemoved
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>Domain .* has been unlocked by registrant</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/contact-auto-deleted:
+    get:
+      tags:
+        - Poll messages
+      summary: Contact object automatically deleted for being unlinked for more than 6 months
+      operationId: pollMessageContactAutoDeleted
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="10508" id="349414">
+                      <qDate>2024-12-05T21:59:53Z</qDate>
+                      <msg>Contact with code REG2:767CADD4 has been archieved because it has been orphaned for longer than 6 months.</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/contact-name-updated-by-registry:
+    get:
+      tags:
+        - Poll messages
+      summary: Name of a contact is updated by the registry
+      operationId: pollMessageContactNameUpdatedByRegistry
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>Contact update: \d+ name updated from .* to .* by the registry</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/csync-dnssec-set:
+    get:
+      tags:
+        - CSYNC poll messages
+      summary: DNSSEC set for a domain
+      operationId: pollMessageCsyncDnssecSet
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>CSYNC DNSSEC initialized for domain .*</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/csync-dnssec-deactivated:
+    get:
+      tags:
+        - CSYNC poll messages
+      summary: DNSSEC deactivated for a domain
+      operationId: pollMessageCsyncDnssecDeactivated
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>CSYNC DNSSEC deactivate for domain .*</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/csync-dnssec-key-rollover:
+    get:
+      tags:
+        - CSYNC poll messages
+      summary: DNSSEC key rollover initiated for a domain
+      operationId: pollMessageCsyncDnssecKeyRollover
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="123456">
+                      <qDate>2025-01-17T12:40:00Z</qDate>
+                      <msg>CSYNC DNSSEC rollover for domain .*</msg>
+                    </msgQ>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/contact-updated-via-portal:
+    get:
+      tags:
+        - Change poll messages
+      summary: Contact data was updated via the registrant portal
+      operationId: pollMessageContactUpdatedViaPortal
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="65325" id="175222">
+                      <qDate>2025-01-06T14:31:07Z</qDate>
+                      <msg>Contact REGISTRAR-SECOND-AS:81C67013 has been updated by registrant</msg>
+                    </msgQ>
+                    <resData>
+                      <contact:chkData xmlns:contact="https://epp.tld.ee/schema/contact-ee-1.1.xsd">
+                        <contact:cd>
+                          <contact:id avail="0">REGISTRAR-SECOND-AS:81C67013</contact:id>
+                        </contact:cd>
+                      </contact:chkData>
+                    </resData>
+                    <extension>
+                      <changePoll:changeData xmlns:changePoll="https://epp.tld.ee/schema/changePoll-1.0.xsd">
+                        <changePoll:operation>update</changePoll:operation>
+                        <changePoll:date>2025-01-06T14:31:07Z</changePoll:date>
+                        <changePoll:svTRID>1632</changePoll:svTRID>
+                        <changePoll:who>Martin Mettig</changePoll:who>
+                      </changePoll:changeData>
+                    </extension>
+                    <trID>
+                      <clTRID>timo2-1737038221</clTRID>
+                      <svTRID>ccReg-8442168984</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+  /epp/poll/messages/multiple-contacts-updated-via-portal:
+    get:
+      tags:
+        - Change poll messages
+      summary: Multiple contacts updated simultaneously via the registrant portal
+      operationId: pollMessageMultipleContactsUpdatedViaPortal
+      responses:
+        '200':
+          description: Poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="lib/schemas/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="9" id="16">
+                      <qDate>2024-02-16T13:17:18Z</qDate>
+                      <msg>4 contacts have been updated by registrant</msg>
+                    </msgQ>
+                    <resData>
+                      <contact:chkData xmlns:contact="https://epp.tld.ee/schema/contact-ee-1.1.xsd">
+                        <contact:cd>
+                          <contact:id avail="0">1111111:33F3C8C4</contact:id>
+                        </contact:cd>
+                        <contact:cd>
+                          <contact:id avail="0">1111111:0C82F3A3</contact:id>
+                        </contact:cd>
+                        <contact:cd>
+                          <contact:id avail="0">1111111:REGISTRAR.EE</contact:id>
+                        </contact:cd>
+                        <contact:cd>
+                          <contact:id avail="0">1111111:SASAS.EE</contact:id>
+                        </contact:cd>
+                      </contact:chkData>
+                    </resData>
+                    <extension>
+                      <changePoll:changeData xmlns:changePoll="https://epp.tld.ee/schema/changePoll-1.0.xsd">
+                        <changePoll:operation>bulk_update</changePoll:operation>
+                        <changePoll:date>2024-02-16T13:17:18Z</changePoll:date>
+                        <changePoll:svTRID>4</changePoll:svTRID>
+                        <changePoll:who>Sergei Tsõganov</changePoll:who>
+                        <changePoll:reason>Auto-update according to official data</changePoll:reason>
+                      </changePoll:changeData>
+                    </extension>
+                    <trID>
+                      <clTRID>maricavor-1712140699</clTRID>
+                      <svTRID>ccReg-7316204233</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+
+components:
+  schemas:
+    EppPollRequest:
+      type: object
+      description: EPP poll command request
+      xml:
+        name: epp
+        namespace: https://epp.tld.ee/schema/epp-ee-1.0.xsd
+      properties:
+        command:
+          type: object
+          properties:
+            poll:
+              type: object
+              properties:
+                op:
+                  type: string
+                  enum: [req, ack]
+                  xml:
+                    attribute: true
+                msgID:
+                  type: string
+                  xml:
+                    attribute: true
+                  description: Required when op is ack
+              required:
+                - op
+            clTRID:
+              type: string
+          required:
+            - poll
+            - clTRID
+      required:
+        - command
+
+    EppResult:
+      type: object
+      properties:
+        code:
+          type: string
+          xml:
+            attribute: true
+        msg:
+          type: string
+
+    EppTrID:
+      type: object
+      properties:
+        clTRID:
+          type: string
+        svTRID:
+          type: string
+
+    EppMsgQ:
+      type: object
+      properties:
+        count:
+          type: string
+          xml:
+            attribute: true
+        id:
+          type: string
+          xml:
+            attribute: true
+        qDate:
+          type: string
+          format: date-time
+        msg:
+          type: string
+
+    EppPollEmptyResponse:
+      type: object
+      description: EPP response when poll queue is empty (result code 1300)
+      xml:
+        name: epp
+        namespace: https://epp.tld.ee/schema/epp-ee-1.0.xsd
+      properties:
+        response:
+          type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/EppResult'
+            trID:
+              $ref: '#/components/schemas/EppTrID'
+          required:
+            - result
+            - trID
+      required:
+        - response
+
+    EppPollAckResponse:
+      type: object
+      description: EPP response for successful poll acknowledge (result code 1000)
+      xml:
+        name: epp
+        namespace: https://epp.tld.ee/schema/epp-ee-1.0.xsd
+      properties:
+        response:
+          type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/EppResult'
+            msgQ:
+              $ref: '#/components/schemas/EppMsgQ'
+            trID:
+              $ref: '#/components/schemas/EppTrID'
+          required:
+            - result
+            - trID
+      required:
+        - response
+
+    EppPollMessageResponse:
+      type: object
+      description: EPP poll message response (result code 1301)
+      xml:
+        name: epp
+        namespace: https://epp.tld.ee/schema/epp-ee-1.0.xsd
+      properties:
+        response:
+          type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/EppResult'
+            msgQ:
+              $ref: '#/components/schemas/EppMsgQ'
+            resData:
+              type: object
+              description: Optional response data
+            extension:
+              type: object
+              description: Optional extension data
+            trID:
+              $ref: '#/components/schemas/EppTrID'
+          required:
+            - result
+            - msgQ
+            - trID
+      required:
+        - response
