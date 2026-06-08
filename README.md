@@ -1,8 +1,12 @@
 <p align="center">
-  <img src="screen.png" alt="Estonian Internet Foundation" width="226">
+  <img src="eif-logo.png" alt="Estonian Internet Foundation" width="226">
 </p>
 
 # EPP Poll API Documentation
+
+<p align="center">
+  <img src="screen.png" alt="Estonian Internet Foundation" width="700">
+</p>
 
 Documentation of EPP poll messages issued by the .ee registry. The goal is to help registrars build automation that processes poll notifications.
 
