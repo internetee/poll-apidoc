@@ -9,6 +9,9 @@ info:
     This documentation describes poll notifications issued by the registry,
     intended for registrars building automation on top of EPP poll.
 
+    > **Note:** Paths shown in this documentation are for documentation only, not real HTTP endpoints.
+    > Poll messages are delivered via the EPP protocol over TLS, not REST API calls.
+
     ## How poll works
 
     1. Send `poll req` to retrieve the next message from the queue
