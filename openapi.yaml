@@ -33,6 +33,7 @@ x-tagGroups:
       - Poll messages
       - CSYNC poll messages
       - Change poll messages
+      - Automatic-renewal poll messages
 
 tags:
   - name: Requests
@@ -45,6 +46,43 @@ tags:
   - name: Change poll messages
     description: |
       Change poll messages as defined in [RFC 8590](https://www.rfc-editor.org/rfc/rfc8590.html).
+
+  - name: Automatic-renewal poll messages
+    description: |
+      Registry-initiated automatic-renewal events are delivered to the cycle's registrar.
+      Exact message wording below is illustrative; use structured event and cycle fields for automation.
+
+      | Event | Trigger |
+      | --- | --- |
+      | `renewed` | Scheduled renewal succeeded, including success after funding retries. |
+      | `fundingWarning` | First insufficient-funds warning in a cycle, once. |
+      | `renewProhibited` | First renewal-blocking warning in a cycle, once; also used for a missing tariff. |
+      | `fundingFailed` | Deadline reached without renewal; automatic renewal preference disabled. |
+
+      Registrar-requested enable, disable and reversal commands (EPP, REPP or registrar portal)
+      produce no automatic-renewal poll message. Normal paid grace completion also produces no poll.
+      Transfer completion produces no extra automatic-renewal poll; existing transfer notifications still apply.
+
+      Automatic renewal is off by default. When enabled, the registry attempts a one-year renewal at expiry.
+      Funding or status failures are retried every 15 minutes until original expiry plus 15 calendar days
+      in Europe/Tallinn. Late success keeps that same deadline. A paid renewal can be reversed only before
+      the returned deadline, using its cycle UUID. A funding failure at the deadline is terminal;
+      a later top-up or re-enable does not reopen that cycle.
+
+      EPP carries `autoRenew:pollData` in the response `extension`, without `resData`.
+      Request `https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd` in login `svcExtension/extURI`
+      to receive this extension. The poll text remains available without extension negotiation.
+      The `cycle` XML attributes map to the REPP cycle object: `id`, `state`, `originalExDate`
+      (`original_expire_time`), `exDate` (`expire_time`), `cancelUntil` (`cancellation_deadline`),
+      and `attempts`. EPP omits `exDate` before successful renewal; REPP returns `expire_time: null`.
+
+      Through REPP notifications and the registrar summary, the attached object type is
+      `DomainAutoRenewal`. Its numeric `attached_obj_id` is an internal record ID; the UUID in
+      `attached_obj_data.cycle.id` is the reversal identifier. `attached_obj_data` contains
+      `event`, `domain` (the domain name), and `cycle`. Cycle states are `fundingRetry`,
+      `autoRenewPeriod`, `completed`, `reversed`, `fundingFailed`, and `cancelled`.
+      Cycle data describes the attached cycle; clients can fetch domain info for current domain expiry.
+      The JSON examples below show REPP notification responses, not HTTP endpoints at these paths.
 
 paths:
   /epp/poll/req:
@@ -132,6 +170,270 @@ paths:
                     </trID>
                   </response>
                 </epp>
+
+  /epp/poll/messages/auto-renew-renewed:
+    get:
+      tags:
+        - Automatic-renewal poll messages
+      summary: Automatically renewed domain
+      operationId: pollMessageAutoRenewRenewed
+      description: |
+        Scheduled renewal succeeded. The message includes the new expiry, amount charged, cycle UUID and cancellation deadline.
+        Exact message wording and example amounts are illustrative.
+      responses:
+        '200':
+          description: Automatic-renewal poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="1399">
+                      <qDate>2027-03-01T00:00:01+02:00</qDate>
+                      <msg>Domain example.ee was automatically renewed until 2028-03-01. Charged 12.00 EUR. Renewal can be cancelled until 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).</msg>
+                    </msgQ>
+                    <extension>
+                      <autoRenew:pollData xmlns:autoRenew="https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd" event="renewed">
+                        <autoRenew:name>example.ee</autoRenew:name>
+                        <autoRenew:cycle id="3f7c2a5e-0000-0000-0000-000000000000" state="autoRenewPeriod" originalExDate="2027-03-01T00:00:00+02:00" exDate="2028-03-01T00:00:00+02:00" cancelUntil="2027-03-16T00:00:00+02:00" attempts="1"/>
+                      </autoRenew:pollData>
+                    </extension>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReppAutoRenewPollMessage'
+              example:
+                {
+                  "code": 1000,
+                  "message": "Command completed successfully",
+                  "data": {
+                    "id": 1399,
+                    "text": "Domain example.ee was automatically renewed until 2028-03-01. Charged 12.00 EUR. Renewal can be cancelled until 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).",
+                    "attached_obj_type": "DomainAutoRenewal",
+                    "attached_obj_id": 42,
+                    "attached_obj_data": {
+                      "event": "renewed",
+                      "domain": "example.ee",
+                      "cycle": {
+                        "id": "3f7c2a5e-0000-0000-0000-000000000000",
+                        "state": "autoRenewPeriod",
+                        "original_expire_time": "2027-03-01T00:00:00+02:00",
+                        "expire_time": "2028-03-01T00:00:00+02:00",
+                        "cancellation_deadline": "2027-03-16T00:00:00+02:00",
+                        "attempts": 1
+                      }
+                    }
+                  }
+                }
+
+  /epp/poll/messages/auto-renew-funding-warning:
+    get:
+      tags:
+        - Automatic-renewal poll messages
+      summary: Automatic renewal awaiting funds
+      operationId: pollMessageAutoRenewFundingWarning
+      description: |
+        The first insufficient-funds warning in this cycle. Funding retries continue until the fixed deadline; this warning is not sent for every attempt.
+        Exact message wording and example amounts are illustrative.
+      responses:
+        '200':
+          description: Automatic-renewal poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="1399">
+                      <qDate>2027-03-01T00:00:01+02:00</qDate>
+                      <msg>Domain example.ee could not be automatically renewed due to insufficient funds. Add funds before 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).</msg>
+                    </msgQ>
+                    <extension>
+                      <autoRenew:pollData xmlns:autoRenew="https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd" event="fundingWarning">
+                        <autoRenew:name>example.ee</autoRenew:name>
+                        <autoRenew:cycle id="3f7c2a5e-0000-0000-0000-000000000000" state="fundingRetry" originalExDate="2027-03-01T00:00:00+02:00" cancelUntil="2027-03-16T00:00:00+02:00" attempts="1"/>
+                      </autoRenew:pollData>
+                    </extension>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReppAutoRenewPollMessage'
+              example:
+                {
+                  "code": 1000,
+                  "message": "Command completed successfully",
+                  "data": {
+                    "id": 1399,
+                    "text": "Domain example.ee could not be automatically renewed due to insufficient funds. Add funds before 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).",
+                    "attached_obj_type": "DomainAutoRenewal",
+                    "attached_obj_id": 42,
+                    "attached_obj_data": {
+                      "event": "fundingWarning",
+                      "domain": "example.ee",
+                      "cycle": {
+                        "id": "3f7c2a5e-0000-0000-0000-000000000000",
+                        "state": "fundingRetry",
+                        "original_expire_time": "2027-03-01T00:00:00+02:00",
+                        "expire_time": null,
+                        "cancellation_deadline": "2027-03-16T00:00:00+02:00",
+                        "attempts": 1
+                      }
+                    }
+                  }
+                }
+
+  /epp/poll/messages/auto-renew-renew-prohibited:
+    get:
+      tags:
+        - Automatic-renewal poll messages
+      summary: Automatic renewal blocked
+      operationId: pollMessageAutoRenewRenewProhibited
+      description: |
+        The first renewal-blocking warning in this cycle. Renewal-blocking statuses, including pendingDelete, prevent payment and renewal. A missing renewal tariff also uses this event. Retries continue until the fixed deadline.
+        Exact message wording and example amounts are illustrative.
+      responses:
+        '200':
+          description: Automatic-renewal poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="1399">
+                      <qDate>2027-03-01T00:00:01+02:00</qDate>
+                      <msg>Automatic renewal of domain example.ee is currently prohibited. Renewal will be retried until 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).</msg>
+                    </msgQ>
+                    <extension>
+                      <autoRenew:pollData xmlns:autoRenew="https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd" event="renewProhibited">
+                        <autoRenew:name>example.ee</autoRenew:name>
+                        <autoRenew:cycle id="3f7c2a5e-0000-0000-0000-000000000000" state="fundingRetry" originalExDate="2027-03-01T00:00:00+02:00" cancelUntil="2027-03-16T00:00:00+02:00" attempts="1"/>
+                      </autoRenew:pollData>
+                    </extension>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReppAutoRenewPollMessage'
+              example:
+                {
+                  "code": 1000,
+                  "message": "Command completed successfully",
+                  "data": {
+                    "id": 1399,
+                    "text": "Automatic renewal of domain example.ee is currently prohibited. Renewal will be retried until 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).",
+                    "attached_obj_type": "DomainAutoRenewal",
+                    "attached_obj_id": 42,
+                    "attached_obj_data": {
+                      "event": "renewProhibited",
+                      "domain": "example.ee",
+                      "cycle": {
+                        "id": "3f7c2a5e-0000-0000-0000-000000000000",
+                        "state": "fundingRetry",
+                        "original_expire_time": "2027-03-01T00:00:00+02:00",
+                        "expire_time": null,
+                        "cancellation_deadline": "2027-03-16T00:00:00+02:00",
+                        "attempts": 1
+                      }
+                    }
+                  }
+                }
+
+  /epp/poll/messages/auto-renew-funding-failed:
+    get:
+      tags:
+        - Automatic-renewal poll messages
+      summary: Automatic renewal failed at deadline
+      operationId: pollMessageAutoRenewFundingFailed
+      description: |
+        The deadline was reached without a successful renewal. The preference is disabled and ordinary expiry processing continues. Later funding does not reopen the cycle.
+        Exact message wording and example amounts are illustrative.
+      responses:
+        '200':
+          description: Automatic-renewal poll message example
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/EppPollMessageResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <epp xmlns="https://epp.tld.ee/schema/epp-ee-1.0.xsd">
+                  <response>
+                    <result code="1301">
+                      <msg>Command completed successfully; ack to dequeue</msg>
+                    </result>
+                    <msgQ count="1" id="1399">
+                      <qDate>2027-03-16T00:00:00+02:00</qDate>
+                      <msg>Domain example.ee was not automatically renewed by 2027-03-16. Automatic renewal has been disabled (cycle 3f7c2a5e-0000-0000-0000-000000000000).</msg>
+                    </msgQ>
+                    <extension>
+                      <autoRenew:pollData xmlns:autoRenew="https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd" event="fundingFailed">
+                        <autoRenew:name>example.ee</autoRenew:name>
+                        <autoRenew:cycle id="3f7c2a5e-0000-0000-0000-000000000000" state="fundingFailed" originalExDate="2027-03-01T00:00:00+02:00" cancelUntil="2027-03-16T00:00:00+02:00" attempts="1440"/>
+                      </autoRenew:pollData>
+                    </extension>
+                    <trID>
+                      <clTRID>QueryNO-1</clTRID>
+                      <svTRID>ccReg-1826947367</svTRID>
+                    </trID>
+                  </response>
+                </epp>
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReppAutoRenewPollMessage'
+              example:
+                {
+                  "code": 1000,
+                  "message": "Command completed successfully",
+                  "data": {
+                    "id": 1399,
+                    "text": "Domain example.ee was not automatically renewed by 2027-03-16. Automatic renewal has been disabled (cycle 3f7c2a5e-0000-0000-0000-000000000000).",
+                    "attached_obj_type": "DomainAutoRenewal",
+                    "attached_obj_id": 42,
+                    "attached_obj_data": {
+                      "event": "fundingFailed",
+                      "domain": "example.ee",
+                      "cycle": {
+                        "id": "3f7c2a5e-0000-0000-0000-000000000000",
+                        "state": "fundingFailed",
+                        "original_expire_time": "2027-03-01T00:00:00+02:00",
+                        "expire_time": null,
+                        "cancellation_deadline": "2027-03-16T00:00:00+02:00",
+                        "attempts": 1440
+                      }
+                    }
+                  }
+                }
 
   /epp/poll/messages/domain-transferred-away:
     get:
@@ -868,6 +1170,76 @@ paths:
 
 components:
   schemas:
+    AutoRenewCycle:
+      type: object
+      required: [id, state, original_expire_time, expire_time, cancellation_deadline, attempts]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Public cycle UUID used for reversal and idempotency.
+        state:
+          type: string
+          enum: [fundingRetry, autoRenewPeriod, completed, reversed, fundingFailed, cancelled]
+        original_expire_time:
+          type: string
+          format: date-time
+        expire_time:
+          type: string
+          format: date-time
+          nullable: true
+          description: Expiry applied by automatic renewal; null until renewal succeeds. Retained after reversal.
+        cancellation_deadline:
+          type: string
+          format: date-time
+          description: Original expiry plus 15 calendar days in Europe/Tallinn; a new reversal must precede this timestamp.
+        attempts:
+          type: integer
+          minimum: 0
+          description: Number of renewal attempts.
+
+    AutoRenewPollData:
+      type: object
+      required: [event, domain, cycle]
+      properties:
+        event:
+          type: string
+          enum: [renewed, fundingWarning, renewProhibited, fundingFailed]
+        domain:
+          type: string
+          example: example.ee
+        cycle:
+          $ref: '#/components/schemas/AutoRenewCycle'
+
+    ReppAutoRenewPollMessage:
+      type: object
+      description: REPP notification response; the registrar summary uses the same attachment fields.
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          example: 1000
+        message:
+          type: string
+        data:
+          type: object
+          required: [id, text, attached_obj_type, attached_obj_id, attached_obj_data]
+          properties:
+            id:
+              type: integer
+              description: Notification ID used for acknowledgement.
+            text:
+              type: string
+              description: Human-readable message; exact wording is illustrative in the examples.
+            attached_obj_type:
+              type: string
+              enum: [DomainAutoRenewal]
+            attached_obj_id:
+              type: integer
+              description: Internal record ID, distinct from the public cycle UUID.
+            attached_obj_data:
+              $ref: '#/components/schemas/AutoRenewPollData'
+
     EppPollRequest:
       type: object
       description: EPP poll command request
