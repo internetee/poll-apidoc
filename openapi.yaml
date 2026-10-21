@@ -57,26 +57,31 @@ tags:
       | `renewed` | Scheduled renewal succeeded, including success after funding retries. |
       | `fundingWarning` | First insufficient-funds warning in a cycle, once. |
       | `renewProhibited` | First renewal-blocking warning in a cycle, once; also used for a missing tariff. |
-      | `renewalOverdue` | Once at the cancellation deadline for an unpaid cycle; renewal attempts continue. |
+      | `renewalFailed` | Exactly once at the cancellation deadline for an unpaid cycle; state becomes failed, retries stop, preference remains enabled. |
 
       Registrar-requested enable, disable and reversal commands (EPP, REPP or registrar portal)
       produce no automatic-renewal poll message. Normal paid grace completion also produces no poll.
       Transfer completion produces no extra automatic-renewal poll; existing transfer notifications still apply.
 
       Automatic renewal is off by default. When enabled, the registry attempts a one-year renewal at expiry.
-      Enabling the preference for an already expired, still-existing domain also triggers renewal,
-      including while it is out of zone or in redemption. Insufficient funds or renewal-blocking statuses
-      (including pendingDelete and pendingUpdate, a pending registrant change) leave the cycle in fundingRetry.
-      Retries continue every 15 minutes past the cancellation deadline until renewal succeeds, the registrar
-      explicitly opts out or renews manually, the domain is transferred, or the domain is deleted.
-      Failed attempts do not change the preference; a later top-up can allow the same cycle to succeed.
+      Enabling the preference for an already expired domain can open a cycle only before its cancellation
+      deadline and only if no cycle exists for that original expiry. Enabling at or after the deadline keeps
+      the preference enabled for future expiries but does not renew the current expiry.
+      Insufficient funds or renewal-blocking statuses (including pendingDelete and pendingUpdate, a pending
+      registrant change) leave the cycle in fundingRetry. The first attempt is immediate when the cycle opens;
+      retries occur once a day, strictly before the cancellation deadline, unless renewal succeeds or the
+      cycle closes earlier through opt-out, manual renewal, transfer or domain deletion.
+      Failed attempts do not change the preference. A top-up before the deadline can allow a later daily
+      attempt to succeed. At the deadline, an unpaid cycle becomes terminal state failed, retries stop,
+      and exactly one renewalFailed poll is sent. The preference stays enabled for future expiries, for
+      example after a manual renewal. A later top-up or re-enable never reopens that failed cycle.
 
-      The cancellation deadline is original expiry plus 15 calendar days in Europe/Tallinn and only bounds
-      the paid-grace reversal window. A paid renewal can be reversed only before the returned deadline,
-      using its cycle UUID. Success always renews from the original expiry by one calendar year and restores
-      the domain to the zone like a manual renewal, clearing expiry-related statuses and dates.
-      Success before the deadline leaves only the remaining cancellation window. Success at or after
-      the deadline is immediately completed, without autoRenewPeriod, and cannot be reversed.
+      The cancellation deadline is fixed when the cycle opens: original expiry plus 15 calendar days in
+      Europe/Tallinn and bounds both renewal retries and the paid-grace reversal window. A paid renewal can
+      be reversed only before the returned deadline, using its cycle UUID. Success always renews from the
+      original expiry by one calendar year and restores the domain to the zone like a manual renewal,
+      clearing expiry-related statuses and dates. A late success leaves only the remaining cancellation
+      window: renewal 2 days after the original expiry leaves 13 days to cancel.
 
       EPP carries `autoRenew:pollData` in the response `extension`, without `resData`.
       Request `https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd` in login `svcExtension/extURI`
@@ -89,7 +94,7 @@ tags:
       `DomainAutoRenewal`. Its numeric `attached_obj_id` is an internal record ID; the UUID in
       `attached_obj_data.cycle.id` is the reversal identifier. `attached_obj_data` contains
       `event`, `domain` (the domain name), and `cycle`. Cycle states are `fundingRetry`,
-      `autoRenewPeriod`, `completed`, `reversed`, and `cancelled`.
+      `autoRenewPeriod`, `completed`, `reversed`, `failed`, and `cancelled`.
       Cycle data describes the attached cycle; clients can fetch domain info for current domain expiry.
       The JSON examples below show REPP notification responses, not HTTP endpoints at these paths.
 
@@ -187,7 +192,7 @@ paths:
       summary: Automatically renewed domain
       operationId: pollMessageAutoRenewRenewed
       description: |
-        Scheduled renewal succeeded. The message includes the new expiry, amount charged, cycle UUID and cancellation deadline. Success at or after the deadline renews from the original expiry, restores the domain to the zone like a manual renewal, and is immediately completed without paid grace or reversal. Such a poll has cycle state completed; the example below shows success before the deadline.
+        Scheduled renewal succeeded before the cancellation deadline. The message includes the new expiry, amount charged, cycle UUID and cancellation deadline. Renewal extends from the original expiry by one calendar year and restores the domain to the zone like a manual renewal. Paid grace lasts only until the fixed deadline: renewal 2 days after expiry leaves 13 days to cancel.
         Exact message wording and example amounts are illustrative.
       responses:
         '200':
@@ -253,7 +258,7 @@ paths:
       summary: Automatic renewal awaiting funds
       operationId: pollMessageAutoRenewFundingWarning
       description: |
-        The first insufficient-funds warning in this cycle. Funding retries continue past the cancellation deadline until renewal succeeds, explicit opt-out or manual renewal, transfer, or domain deletion; this warning is not sent for every attempt.
+        The first insufficient-funds warning in this cycle. Funding retries occur once a day until the cancellation deadline, unless renewal succeeds or the cycle closes earlier through opt-out, manual renewal, transfer or domain deletion. This warning is not sent for every attempt.
         Exact message wording and example amounts are illustrative.
       responses:
         '200':
@@ -271,7 +276,7 @@ paths:
                     </result>
                     <msgQ count="1" id="1399">
                       <qDate>2027-03-01T00:00:01+02:00</qDate>
-                      <msg>Domain example.ee could not be automatically renewed due to insufficient funds. Add funds to allow renewal; attempts continue past 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).</msg>
+                      <msg>Domain example.ee could not be automatically renewed due to insufficient funds. Add funds to allow renewal; attempts occur once a day before 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).</msg>
                     </msgQ>
                     <extension>
                       <autoRenew:pollData xmlns:autoRenew="https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd" event="fundingWarning">
@@ -294,7 +299,7 @@ paths:
                   "message": "Command completed successfully",
                   "data": {
                     "id": 1399,
-                    "text": "Domain example.ee could not be automatically renewed due to insufficient funds. Add funds to allow renewal; attempts continue past 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).",
+                    "text": "Domain example.ee could not be automatically renewed due to insufficient funds. Add funds to allow renewal; attempts occur once a day before 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).",
                     "attached_obj_type": "DomainAutoRenewal",
                     "attached_obj_id": 42,
                     "attached_obj_data": {
@@ -319,7 +324,7 @@ paths:
       summary: Automatic renewal blocked
       operationId: pollMessageAutoRenewRenewProhibited
       description: |
-        The first renewal-blocking warning in this cycle. Renewal-blocking statuses, including pendingDelete and pendingUpdate (pending registrant change), prevent payment and renewal. A missing renewal tariff also uses this event. Retries continue past the cancellation deadline until renewal succeeds, explicit opt-out or manual renewal, transfer, or domain deletion.
+        The first renewal-blocking warning in this cycle. Renewal-blocking statuses, including pendingDelete and pendingUpdate (pending registrant change), prevent payment and renewal. A missing renewal tariff also uses this event. Retries occur once a day until the cancellation deadline, unless renewal succeeds or the cycle closes earlier through opt-out, manual renewal, transfer or domain deletion.
         Exact message wording and example amounts are illustrative.
       responses:
         '200':
@@ -337,7 +342,7 @@ paths:
                     </result>
                     <msgQ count="1" id="1399">
                       <qDate>2027-03-01T00:00:01+02:00</qDate>
-                      <msg>Automatic renewal of domain example.ee is currently prohibited. Renewal attempts continue past 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).</msg>
+                      <msg>Automatic renewal of domain example.ee is currently prohibited. Renewal attempts occur once a day before 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).</msg>
                     </msgQ>
                     <extension>
                       <autoRenew:pollData xmlns:autoRenew="https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd" event="renewProhibited">
@@ -360,7 +365,7 @@ paths:
                   "message": "Command completed successfully",
                   "data": {
                     "id": 1399,
-                    "text": "Automatic renewal of domain example.ee is currently prohibited. Renewal attempts continue past 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).",
+                    "text": "Automatic renewal of domain example.ee is currently prohibited. Renewal attempts occur once a day before 2027-03-16 (cycle 3f7c2a5e-0000-0000-0000-000000000000).",
                     "attached_obj_type": "DomainAutoRenewal",
                     "attached_obj_id": 42,
                     "attached_obj_data": {
@@ -378,14 +383,14 @@ paths:
                   }
                 }
 
-  /epp/poll/messages/auto-renew-renewal-overdue:
+  /epp/poll/messages/auto-renew-renewal-failed:
     get:
       tags:
         - Automatic-renewal poll messages
-      summary: Automatic renewal overdue at deadline
-      operationId: pollMessageAutoRenewRenewalOverdue
+      summary: Automatic renewal failed at deadline
+      operationId: pollMessageAutoRenewRenewalFailed
       description: |
-        Sent exactly once at the cancellation deadline for an unpaid cycle. The cycle remains fundingRetry and the preference stays enabled. The domain goes out of zone under ordinary expiry processing. Renewal attempts continue until renewal succeeds, the registrar explicitly opts out or renews manually, the domain is transferred, or the domain is deleted.
+        Sent exactly once at the cancellation deadline for an unpaid cycle. The cycle becomes terminal state failed and renewal attempts for that original expiry stop. The preference stays enabled for future expiries, for example after a manual renewal. A later top-up or re-enable never reopens the failed cycle. Enabling at or after the deadline does not renew the current expiry. Ordinary expiry processing continues.
         Exact message wording and example amounts are illustrative.
       responses:
         '200':
@@ -403,12 +408,12 @@ paths:
                     </result>
                     <msgQ count="1" id="1399">
                       <qDate>2027-03-16T00:00:00+02:00</qDate>
-                      <msg>Domain example.ee was not automatically renewed by 2027-03-16 due to insufficient funds; domain goes out of zone. Renewal attempts continue until renewal succeeds, the registrar opts out or renews manually, the domain is transferred, or the domain is deleted (cycle 3f7c2a5e-0000-0000-0000-000000000000).</msg>
+                      <msg>Domain example.ee was not automatically renewed by 2027-03-16 due to insufficient funds; automatic renewal attempts for this expiry stopped; preference remains enabled (cycle 3f7c2a5e-0000-0000-0000-000000000000).</msg>
                     </msgQ>
                     <extension>
-                      <autoRenew:pollData xmlns:autoRenew="https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd" event="renewalOverdue">
+                      <autoRenew:pollData xmlns:autoRenew="https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd" event="renewalFailed">
                         <autoRenew:name>example.ee</autoRenew:name>
-                        <autoRenew:cycle id="3f7c2a5e-0000-0000-0000-000000000000" state="fundingRetry" originalExDate="2027-03-01T00:00:00+02:00" cancelUntil="2027-03-16T00:00:00+02:00" attempts="1440"/>
+                        <autoRenew:cycle id="3f7c2a5e-0000-0000-0000-000000000000" state="failed" originalExDate="2027-03-01T00:00:00+02:00" cancelUntil="2027-03-16T00:00:00+02:00" attempts="15"/>
                       </autoRenew:pollData>
                     </extension>
                     <trID>
@@ -426,19 +431,19 @@ paths:
                   "message": "Command completed successfully",
                   "data": {
                     "id": 1399,
-                    "text": "Domain example.ee was not automatically renewed by 2027-03-16 due to insufficient funds; domain goes out of zone. Renewal attempts continue until renewal succeeds, the registrar opts out or renews manually, the domain is transferred, or the domain is deleted (cycle 3f7c2a5e-0000-0000-0000-000000000000).",
+                    "text": "Domain example.ee was not automatically renewed by 2027-03-16 due to insufficient funds; automatic renewal attempts for this expiry stopped; preference remains enabled (cycle 3f7c2a5e-0000-0000-0000-000000000000).",
                     "attached_obj_type": "DomainAutoRenewal",
                     "attached_obj_id": 42,
                     "attached_obj_data": {
-                      "event": "renewalOverdue",
+                      "event": "renewalFailed",
                       "domain": "example.ee",
                       "cycle": {
                         "id": "3f7c2a5e-0000-0000-0000-000000000000",
-                        "state": "fundingRetry",
+                        "state": "failed",
                         "original_expire_time": "2027-03-01T00:00:00+02:00",
                         "expire_time": null,
                         "cancellation_deadline": "2027-03-16T00:00:00+02:00",
-                        "attempts": 1440
+                        "attempts": 15
                       }
                     }
                   }
@@ -1189,7 +1194,7 @@ components:
           description: Public cycle UUID used for reversal and idempotency.
         state:
           type: string
-          enum: [fundingRetry, autoRenewPeriod, completed, reversed, cancelled]
+          enum: [fundingRetry, autoRenewPeriod, completed, reversed, failed, cancelled]
         original_expire_time:
           type: string
           format: date-time
@@ -1201,7 +1206,7 @@ components:
         cancellation_deadline:
           type: string
           format: date-time
-          description: Original expiry plus 15 calendar days in Europe/Tallinn; a new reversal must precede this timestamp. Renewal retries continue past it; success at or after it is immediately completed and not reversible.
+          description: Fixed at cycle open as original expiry plus 15 calendar days in Europe/Tallinn. Daily renewal retries and paid-grace reversal must precede this timestamp. An unpaid cycle becomes failed at the deadline; retries stop and the preference stays enabled for future expiries.
         attempts:
           type: integer
           minimum: 0
@@ -1213,7 +1218,7 @@ components:
       properties:
         event:
           type: string
-          enum: [renewed, fundingWarning, renewProhibited, renewalOverdue]
+          enum: [renewed, fundingWarning, renewProhibited, renewalFailed]
         domain:
           type: string
           example: example.ee
