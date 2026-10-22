@@ -60,7 +60,8 @@ tags:
       | `renewalFailed` | Exactly once at the cancellation deadline for an unpaid cycle; state becomes failed, retries stop, preference remains enabled. |
 
       Registrar-requested enable, disable and reversal commands (EPP, REPP or registrar portal)
-      produce no automatic-renewal poll message. Normal paid grace completion also produces no poll.
+      produce no automatic-renewal poll message. Normal paid grace completion and completion caused by a
+      registrant change also produce no automatic-renewal poll.
       Transfer completion produces no extra automatic-renewal poll; existing transfer notifications still apply.
 
       Automatic renewal is off by default. When enabled, the registry attempts a one-year renewal at expiry.
@@ -78,10 +79,20 @@ tags:
 
       The cancellation deadline is fixed when the cycle opens: original expiry plus 15 calendar days in
       Europe/Tallinn and bounds both renewal retries and the paid-grace reversal window. A paid renewal can
-      be reversed only before the returned deadline, using its cycle UUID. Success always renews from the
-      original expiry by one calendar year and restores the domain to the zone like a manual renewal,
-      clearing expiry-related statuses and dates. A late success leaves only the remaining cancellation
-      window: renewal 2 days after the original expiry leaves 13 days to cancel.
+      be reversed only during active paid grace and before the returned deadline, using its cycle UUID.
+      Success always renews from the original expiry by one calendar year and restores the domain to the
+      zone like a manual renewal, clearing expiry-related statuses and dates. A late success leaves only
+      the remaining cancellation window: renewal 2 days after the original expiry leaves 13 days to cancel.
+
+      A completed registrant change (the registrant's `ident` changes, directly or after registrant
+      confirmation) ends the cancellation period for a paid cycle: autoRenewPeriod becomes completed,
+      the paid year remains, no refund is issued, and the cycle can no longer be reversed. Switching to
+      another contact with the same `ident` is not a registrant change. The auto-renew preference is
+      unchanged; the registrar informs the registrant and opts out if wanted. A pending registrant change
+      (pendingUpdate) blocks renewal but does not end the cancellation period. A fundingRetry cycle stays
+      open across a registrant change and daily retries continue until the deadline.
+      A completed transfer disables the preference: a paid cycle becomes completed without refund, while
+      fundingRetry becomes cancelled. The paid year stays and the gaining registrar is never charged.
 
       EPP carries `autoRenew:pollData` in the response `extension`, without `resData`.
       Request `https://epp.tld.ee/schema/autoRenew-ee-1.0.xsd` in login `svcExtension/extURI`
@@ -1206,7 +1217,7 @@ components:
         cancellation_deadline:
           type: string
           format: date-time
-          description: Fixed at cycle open as original expiry plus 15 calendar days in Europe/Tallinn. Daily renewal retries and paid-grace reversal must precede this timestamp. An unpaid cycle becomes failed at the deadline; retries stop and the preference stays enabled for future expiries.
+          description: Fixed at cycle open as original expiry plus 15 calendar days in Europe/Tallinn. Daily renewal retries and paid-grace reversal must precede this timestamp. Paid grace may end earlier on a completed registrant change or transfer. An unpaid cycle becomes failed at the deadline; retries stop and the preference stays enabled for future expiries.
         attempts:
           type: integer
           minimum: 0
